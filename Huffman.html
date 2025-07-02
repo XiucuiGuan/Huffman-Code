@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Huffman 编码模拟器</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      padding: 0;
+    }
+    h1 {
+      color: #333;
+    }
+    input, button, select {
+      padding: 10px;
+      margin: 5px 0;
+    }
+    #treeDisplay, #visualTree {
+      white-space: pre-wrap;
+      font-family: monospace;
+      background: #f0f0f0;
+      padding: 10px;
+      margin-top: 20px;
+    }
+    .tree-node {
+      display: inline-block;
+      text-align: center;
+      margin: 10px;
+      padding: 20px;
+      border: 2px solid #00796b;
+      border-radius: 50%;
+      background-color: #b2dfdb;
+      min-width: 60px;
+    }
+    .tree-container {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+    .highlight {
+      background-color: #ffecb3;
+    }
+    .feedback {
+      margin-top: 10px;
+      font-weight: bold;
+    }
+    .node-link {
+      stroke: #555;
+      stroke-width: 2px;
+    }
+    svg {
+      display: block;
+      margin: 20px auto;
+    }
+    .correct {
+      color: green;
+    }
+    .incorrect {
+      color: red;
+    }
+  </style>
+</head>
+<body>
+  <h1>Huffman 编码模拟器</h1>
+  <p><strong>霍夫曼编码(Huffman Coding)</strong>是可变字长编码(VLC)的一种，于1952年提出。该方法完全依据字符出现概率来构造平均长度最短的码字，因此也被称之为最佳编码。</p>
+  <p>选择输入方式：</p>
+  <select id="inputMode">
+    <option value="manual">手动输入字符串</option>
+    <option value="random">系统随机生成字符串</option>
+  </select>
+  <br>
+  <label for="inputText">输入文本：</label>
+  <input type="text" id="inputText">
+  <button onclick="prepareText()">下一步：统计频率</button>
+  <button onclick="skipToFinal()">跳过步骤，直接查看结果</button>
+
+  <div id="stepContainer"></div>
+  <div id="finalTree"></div>
+  <div id="visualization"></div>
+
+  <script>
+    let frequencies = {};
+    let buildSteps = [];
+    let currentStep = 0;
+    let originalText = '';
+    let finalTreeRoot = null;
+    let encodings = {};
+
+    function prepareText() {
+      const mode = document.getElementById('inputMode').value;
+      if (mode === 'random') {
+        originalText = generateRandomText();
+        document.getElementById('inputText').value = originalText;
+      } else {
+        originalText = document.getElementById('inputText').value;
+      }
+      analyzeFrequencies();
+    }
+
+    function generateRandomText() {
+      const chars = 'ABCDE';
+      const length = Math.floor(Math.random() * 19) + 32; // 32~50个字符
+      let result = '';
+      for (let i = 0; i < length; i++) {
+        result += chars[Math.floor(Math.random() * chars.length)];
+      }
+      return result;
+    }
+
+    function analyzeFrequencies() {
+      frequencies = {};
+      for (let char of originalText) {
+        if (char !== ' ') {
+          frequencies[char] = (frequencies[char] || 0) + 1;
+        }
+      }
+      document.getElementById('stepContainer').innerHTML = `<h2>字符频率：</h2><pre>${JSON.stringify(frequencies, null, 2)}</pre>
+        <button onclick="startTreeBuild()">下一步：逐步构建Huffman树</button>`;
+    }
+
+    function startTreeBuild() {
+      let nodes = Object.entries(frequencies).map(([char, freq]) => ({char, freq, left: null, right: null}));
+      buildSteps = [];
+      while (nodes.length > 1) {
+        nodes.sort((a, b) => a.freq - b.freq || a.char.localeCompare(b.char));
+        const left = nodes.shift();
+        const right = nodes.shift();
+        const merged = { char: left.char + right.char, freq: left.freq + right.freq, left, right };
+        buildSteps.push({ options: [left, right], remaining: [...nodes], merged });
+        nodes.push(merged);
+      }
+      finalTreeRoot = nodes[0];
+      currentStep = 0;
+      renderStep();
+    }
+
+    function renderStep() {
+      const step = buildSteps[currentStep];
+      const allNodes = [...step.remaining, ...step.options].sort((a, b) => a.freq - b.freq);
+      let html = `<h2>步骤 ${currentStep + 1}：请选择要合并的两个节点</h2><div class="tree-container">`;
+      for (let node of allNodes) {
+        html += `<div class="tree-node">${node.char}: ${node.freq}</div>`;
+      }
+      html += '</div>';
+      html += `
+        <label>填写要合并的字符（用逗号分隔，例如 A,D）：</label>
+        <input type="text" id="mergeInput">
+        <button onclick="checkMergeAnswer()">提交</button>
+        <div id="feedback" class="feedback"></div>
+        <div id="stepVisualization"></div>
+      `;
+      document.getElementById('stepContainer').innerHTML = html;
+      renderPartialTree(buildSteps.slice(0, currentStep + 1));
+    }
+
+    function checkMergeAnswer() {
+      const feedbackEl = document.getElementById('feedback');
+      const userInput = document.getElementById('mergeInput').value.replace(/\s+/g, '').split(',').sort().join(',');
+      const step = buildSteps[currentStep];
+      const correctAnswers = [[step.options[0].char, step.options[1].char].sort().join(',')];
+
+      if (correctAnswers.includes(userInput)) {
+        feedbackEl.innerHTML = '<span class="correct">填写正确！</span>';
+        currentStep++;
+        if (currentStep < buildSteps.length) {
+          setTimeout(() => renderStep(), 1000);
+        } else {
+          document.getElementById('stepContainer').innerHTML = '<p>Huffman树构建完毕！请点击“再来一题”。</p><button onclick="resetAll()">再来一题</button>';
+          showFinalTree();
+        }
+      } else {
+        feedbackEl.innerHTML = `<span class="incorrect">填写错误！正确答案可能是：${correctAnswers[0]}</span>`;
+      }
+    }
+
+    function showFinalTree() {
+      encodings = {};
+      generateCodes(finalTreeRoot, '');
+      document.getElementById('finalTree').innerHTML = '<h2>最终Huffman编码：</h2><pre>' + JSON.stringify(encodings, null, 2) + '</pre>';
+      document.getElementById('visualization').innerHTML = '<h2>Huffman树图示：</h2>';
+      renderTree(finalTreeRoot, 'visualization');
+    }
+
+    function generateCodes(node, code) {
+      if (!node.left && !node.right) {
+        encodings[node.char] = code;
+        return;
+      }
+      if (node.left) generateCodes(node.left, code + '0');
+      if (node.right) generateCodes(node.right, code + '1');
+    }
+
+    function renderTree(root, containerId) {
+      const svgNS = 'http://www.w3.org/2000/svg';
+      const svg = document.createElementNS(svgNS, 'svg');
+      svg.setAttribute('width', '1000');
+      svg.setAttribute('height', '600');
+      drawNode(svg, root, 500, 20, 250);
+      document.getElementById(containerId).innerHTML = '';
+      document.getElementById(containerId).appendChild(svg);
+    }
+
+    function drawNode(svg, node, x, y, offset) {
+      const svgNS = 'http://www.w3.org/2000/svg';
+      const circle = document.createElementNS(svgNS, 'circle');
+      circle.setAttribute('cx', x);
+      circle.setAttribute('cy', y);
+      circle.setAttribute('r', 20);
+      circle.setAttribute('fill', '#b2dfdb');
+      circle.setAttribute('stroke', '#00796b');
+      circle.setAttribute('stroke-width', '2');
+      svg.appendChild(circle);
+
+      const text = document.createElementNS(svgNS, 'text');
+      text.setAttribute('x', x);
+      text.setAttribute('y', y + 5);
+      text.setAttribute('text-anchor', 'middle');
+      text.setAttribute('font-size', '12');
+      text.textContent = `${node.char}:${node.freq}`;
+      svg.appendChild(text);
+
+      if (node.left) {
+        const x1 = x - offset;
+        const y1 = y + 80;
+        drawLine(svg, x, y, x1, y1, '0');
+        drawNode(svg, node.left, x1, y1, offset / 2);
+      }
+      if (node.right) {
+        const x2 = x + offset;
+        const y2 = y + 80;
+        drawLine(svg, x, y, x2, y2, '1');
+        drawNode(svg, node.right, x2, y2, offset / 2);
+      }
+    }
+
+    function drawLine(svg, x1, y1, x2, y2, label) {
+      const svgNS = 'http://www.w3.org/2000/svg';
+      const line = document.createElementNS(svgNS, 'line');
+      line.setAttribute('x1', x1);
+      line.setAttribute('y1', y1);
+      line.setAttribute('x2', x2);
+      line.setAttribute('y2', y2);
+      line.setAttribute('stroke', '#555');
+      line.setAttribute('stroke-width', '2');
+      svg.appendChild(line);
+
+      const text = document.createElementNS(svgNS, 'text');
+      text.setAttribute('x', (x1 + x2) / 2);
+      text.setAttribute('y', (y1 + y2) / 2 - 5);
+      text.setAttribute('text-anchor', 'middle');
+      text.setAttribute('font-size', '12');
+      text.textContent = label;
+      svg.appendChild(text);
+    }
+
+    function renderPartialTree(steps) {
+      let last = null;
+      for (let step of steps) {
+        last = step.merged;
+      }
+      renderTree(last, 'stepVisualization');
+    }
+
+    function skipToFinal() {
+      const mode = document.getElementById('inputMode').value;
+      if (mode === 'random') {
+        originalText = generateRandomText();
+        document.getElementById('inputText').value = originalText;
+      } else {
+        originalText = document.getElementById('inputText').value;
+      }
+
+      frequencies = {};
+      for (let char of originalText) {
+        if (char !== ' ') {
+          frequencies[char] = (frequencies[char] || 0) + 1;
+        }
+      }
+
+      let nodes = Object.entries(frequencies).map(([char, freq]) => ({char, freq, left: null, right: null}));
+      while (nodes.length > 1) {
+        nodes.sort((a, b) => a.freq - b.freq || a.char.localeCompare(b.char));
+        const left = nodes.shift();
+        const right = nodes.shift();
+        const merged = { char: left.char + right.char, freq: left.freq + right.freq, left, right };
+        nodes.push(merged);
+      }
+      finalTreeRoot = nodes[0];
+      showFinalTree();
+    }
+
+    function resetAll() {
+      document.getElementById('inputText').value = '';
+      document.getElementById('stepContainer').innerHTML = '';
+      document.getElementById('finalTree').innerHTML = '';
+      document.getElementById('visualization').innerHTML = '';
+    }
+  </script>
+</body>
+</html>
